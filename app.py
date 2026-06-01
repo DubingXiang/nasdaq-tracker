@@ -8,6 +8,9 @@ from compute import compute_valuation, get_indicator_details
 
 app = Flask(__name__)
 
+# 启动时初始化数据库
+init_db()
+
 
 @app.template_filter("cache_bust")
 def cache_bust_filter(url):
@@ -37,34 +40,37 @@ def _serialize_history(history):
 
 @app.route("/")
 def index():
-    latest = get_latest()
-    if latest is None:
-        return render_template("index.html", no_data=True)
+    try:
+        latest = get_latest()
+        if latest is None:
+            return render_template("index.html", no_data=True)
 
-    # 构造 data dict 给 compute 用
-    data = {
-        "pe": latest.get("pe"),
-        "cape": latest.get("cape"),
-        "drawdown": latest.get("drawdown"),
-        "treasury": latest.get("treasury"),
-        "vxn": latest.get("vxn"),
-    }
+        # 构造 data dict 给 compute 用
+        data = {
+            "pe": latest.get("pe"),
+            "cape": latest.get("cape"),
+            "drawdown": latest.get("drawdown"),
+            "treasury": latest.get("treasury"),
+            "vxn": latest.get("vxn"),
+        }
 
-    valuation = compute_valuation(data)
-    details = get_indicator_details(data)
-    history = get_history(30)
-    signals = get_signals(20)
+        valuation = compute_valuation(data)
+        details = get_indicator_details(data)
+        history = get_history(30)
+        signals = get_signals(20)
 
-    return render_template(
-        "index.html",
-        no_data=False,
-        latest=latest,
-        valuation=valuation,
-        details=details,
-        history_json=_serialize_history(history),
-        signals=signals,
-        updated_at=latest.get("date", datetime.now().strftime("%Y-%m-%d")),
-    )
+        return render_template(
+            "index.html",
+            no_data=False,
+            latest=latest,
+            valuation=valuation,
+            details=details,
+            history_json=_serialize_history(history),
+            signals=signals,
+            updated_at=latest.get("date", datetime.now().strftime("%Y-%m-%d")),
+        )
+    except Exception as e:
+        return render_template("index.html", no_data=True, error=str(e))
 
 
 @app.route("/api/history")
