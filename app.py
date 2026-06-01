@@ -11,6 +11,13 @@ app = Flask(__name__)
 # 启动时初始化数据库
 init_db()
 
+# 启动定时任务（每天北京时间8点自动更新）
+try:
+    from scheduler import start_scheduler
+    start_scheduler()
+except Exception as e:
+    print(f"[App] Scheduler start error: {e}")
+
 
 @app.template_filter("cache_bust")
 def cache_bust_filter(url):
