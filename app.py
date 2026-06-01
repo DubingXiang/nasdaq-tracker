@@ -8,8 +8,15 @@ from compute import compute_valuation, get_indicator_details
 
 app = Flask(__name__)
 
-# 启动时初始化数据库
+# 启动时初始化数据库，如果为空则自动拉取数据
 init_db()
+try:
+    from store import get_record_count
+    if get_record_count() == 0:
+        from scheduler import run_daily_task
+        run_daily_task()
+except Exception as e:
+    print(f"[App] Initial data fetch error: {e}")
 
 # 启动定时任务（每天北京时间8点自动更新）
 try:
