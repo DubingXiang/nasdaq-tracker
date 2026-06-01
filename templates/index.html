@@ -1,0 +1,348 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>纳指估值追踪器</title>
+    <style>
+        :root {
+            --bg: #0f172a; --card: #1e293b; --border: #334155;
+            --text: #e2e8f0; --dim: #94a3b8; --accent: #38bdf8;
+            --green: #4ade80; --yellow: #facc15; --orange: #fb923c; --red: #f87171;
+        }
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; background: var(--bg); color: var(--text); min-height: 100vh; }
+
+        .container { max-width: 1100px; margin: 0 auto; padding: 1.5rem; }
+
+        /* Header */
+        .header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 2rem; padding-bottom: 1rem; border-bottom: 1px solid var(--border); }
+        .header h1 { font-size: 1.5rem; font-weight: 700; }
+        .header .date { color: var(--dim); font-size: 0.85rem; }
+        .refresh-btn { background: var(--accent); color: var(--bg); border: none; padding: 0.5rem 1.2rem; border-radius: 8px; cursor: pointer; font-size: 0.85rem; font-weight: 600; }
+        .refresh-btn:hover { opacity: 0.85; }
+        .refresh-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+
+        /* Cards Grid */
+        .cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 1rem; margin-bottom: 2rem; }
+        .card { background: var(--card); border-radius: 12px; padding: 1.25rem; border: 1px solid var(--border); cursor: pointer; transition: border-color 0.2s; }
+        .card:hover { border-color: var(--accent); }
+        .card .label { color: var(--dim); font-size: 0.8rem; margin-bottom: 0.5rem; display: flex; justify-content: space-between; align-items: center; }
+        .card .value { font-size: 1.8rem; font-weight: 700; margin-bottom: 0.5rem; }
+        .card .arrow { color: var(--dim); font-size: 0.85rem; transition: transform 0.2s; display: inline-block; }
+        .card.expanded .arrow { transform: rotate(180deg); }
+
+        /* Status Badge */
+        .badge { display: inline-block; padding: 0.15rem 0.6rem; border-radius: 10px; font-size: 0.75rem; font-weight: 600; }
+
+        /* Expand Details */
+        .card-details { display: none; margin-top: 1rem; padding-top: 1rem; border-top: 1px solid var(--border); font-size: 0.85rem; line-height: 1.7; color: var(--dim); }
+        .card.expanded .card-details { display: block; }
+        .card-details .desc { margin-bottom: 0.75rem; color: var(--text); }
+        .card-details .bands { list-style: none; }
+        .card-details .bands li { padding: 0.2rem 0; }
+        .card-details .bands .active { color: var(--accent); font-weight: 600; }
+        .card-details .status-line { margin-top: 0.75rem; padding: 0.5rem 0.75rem; border-radius: 6px; background: rgba(56,189,248,0.1); color: var(--accent); font-weight: 500; }
+
+        /* Score Section */
+        .score-section { background: var(--card); border-radius: 12px; padding: 2rem; margin-bottom: 2rem; border: 1px solid var(--border); text-align: center; }
+        .score-gauge { position: relative; width: 160px; height: 160px; margin: 0 auto 1rem; }
+        .score-gauge svg { transform: rotate(-90deg); }
+        .score-gauge circle { fill: none; stroke-width: 10; }
+        .score-gauge .bg { stroke: var(--border); }
+        .score-gauge .fill { stroke-linecap: round; transition: stroke-dashoffset 1s ease; }
+        .score-value { position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); font-size: 2.5rem; font-weight: 800; }
+        .score-label { font-size: 1.2rem; font-weight: 600; margin-bottom: 0.5rem; }
+
+        /* Breakdown Table */
+        .breakdown { background: var(--card); border-radius: 12px; padding: 1.5rem; margin-bottom: 2rem; border: 1px solid var(--border); }
+        .breakdown h3 { font-size: 1rem; margin-bottom: 1rem; }
+        .breakdown table { width: 100%; border-collapse: collapse; font-size: 0.85rem; }
+        .breakdown th { color: var(--dim); font-weight: 500; text-align: left; padding: 0.5rem; border-bottom: 1px solid var(--border); }
+        .breakdown td { padding: 0.5rem; border-bottom: 1px solid rgba(51,65,85,0.5); }
+
+        /* Charts */
+        .charts { background: var(--card); border-radius: 12px; padding: 1.5rem; margin-bottom: 2rem; border: 1px solid var(--border); }
+        .charts h3 { font-size: 1rem; margin-bottom: 1rem; }
+        .chart-box { position: relative; height: 250px; margin-bottom: 1.5rem; }
+        .chart-box:last-child { margin-bottom: 0; }
+        .chart-box canvas { width: 100% !important; }
+
+        /* Signal Log */
+        .signal-log { background: var(--card); border-radius: 12px; padding: 1.5rem; margin-bottom: 2rem; border: 1px solid var(--border); }
+        .signal-log h3 { font-size: 1rem; margin-bottom: 1rem; }
+        .signal-log table { width: 100%; border-collapse: collapse; font-size: 0.85rem; }
+        .signal-log th { color: var(--dim); font-weight: 500; text-align: left; padding: 0.5rem; border-bottom: 1px solid var(--border); }
+        .signal-log td { padding: 0.5rem; border-bottom: 1px solid rgba(51,65,85,0.5); }
+
+        /* Empty State */
+        .empty { text-align: center; padding: 4rem 2rem; color: var(--dim); }
+        .empty h2 { color: var(--text); margin-bottom: 1rem; }
+
+        /* Footer */
+        .footer { text-align: center; color: var(--dim); font-size: 0.75rem; padding-top: 1rem; border-top: 1px solid var(--border); }
+
+        /* Responsive */
+        @media (max-width: 640px) {
+            .cards { grid-template-columns: 1fr 1fr; }
+            .card .value { font-size: 1.4rem; }
+            .header { flex-direction: column; gap: 0.75rem; align-items: flex-start; }
+            .chart-box { height: 200px; }
+        }
+    </style>
+</head>
+<body>
+<div class="container">
+
+    {% if no_data %}
+    <div class="empty">
+        <h2>纳指估值追踪器</h2>
+        <p>暂无数据，正在拉取中...</p>
+        <p style="margin-top:1rem">刷新页面或等待定时任务执行</p>
+    </div>
+    {% else %}
+
+    <!-- Header -->
+    <div class="header">
+        <h1>纳指估值追踪器</h1>
+        <div style="display:flex;align-items:center;gap:1rem">
+            <span class="date">更新: {{ updated_at }}</span>
+            <button class="refresh-btn" onclick="refreshData(this)">刷新数据</button>
+        </div>
+    </div>
+
+    <!-- 5 Indicator Cards -->
+    <div class="cards">
+        {% for key in ['pe', 'cape', 'drawdown', 'treasury', 'vxn'] %}
+        {% set d = details[key] %}
+        <div class="card" onclick="toggleCard(this)">
+            <div class="label">
+                <span>{{ d.name }} <span style="font-size:0.7rem;color:var(--dim)">{{ d.full_name }}</span></span>
+                <span class="arrow">▼</span>
+            </div>
+            <div class="value">{{ d.display }}</div>
+            <span class="badge" style="background:{{ d.status_color }}22;color:{{ d.status_color }}">{{ d.status }}</span>
+
+            <div class="card-details">
+                <div class="desc">{{ d.description }}</div>
+                <div style="font-weight:600;color:var(--text);margin-bottom:0.3rem">怎么读：</div>
+                <ul class="bands">
+                    {% for band_label, band_desc in d.bands %}
+                    <li{% if d.current_band == band_label %} class="active"{% endif %}>
+                        <strong>{{ band_label }}</strong>：{{ band_desc }}
+                    </li>
+                    {% endfor %}
+                </ul>
+                {% if d.current_band %}
+                <div class="status-line">当前处于「{{ d.current_band }}」区间</div>
+                {% endif %}
+            </div>
+        </div>
+        {% endfor %}
+    </div>
+
+    <!-- Valuation Score -->
+    {% set score = valuation.score or 0 %}
+    {% set circumference = 2 * 3.14159 * 70 %}
+    {% set offset = circumference - (score / 100) * circumference %}
+    {% if score >= 60 %}{% set score_color = '#4ade80' %}
+    {% elif score >= 45 %}{% set score_color = '#facc15' %}
+    {% elif score >= 30 %}{% set score_color = '#fb923c' %}
+    {% else %}{% set score_color = '#f87171' %}{% endif %}
+
+    <div class="score-section">
+        <div style="color:var(--dim);font-size:0.85rem;margin-bottom:0.75rem">综合估值评分</div>
+        <div class="score-gauge">
+            <svg width="160" height="160" viewBox="0 0 160 160">
+                <circle class="bg" cx="80" cy="80" r="70"/>
+                <circle class="fill" cx="80" cy="80" r="70"
+                    stroke="{{ score_color }}"
+                    stroke-dasharray="{{ circumference }}"
+                    stroke-dashoffset="{{ offset }}"/>
+            </svg>
+            <div class="score-value" style="color:{{ score_color }}">{{ score }}</div>
+        </div>
+        <div class="score-label" style="color:{{ score_color }}">{{ valuation.signal }}</div>
+        <div style="color:var(--dim);font-size:0.8rem">0=极度高估 → 100=极度低估</div>
+    </div>
+
+    <!-- Breakdown Table -->
+    <div class="breakdown">
+        <h3>评分拆解</h3>
+        <table>
+            <thead><tr><th>指标</th><th>权重</th><th>当前值</th><th>得分</th></tr></thead>
+            <tbody>
+            {% for key in ['pe', 'cape', 'drawdown', 'treasury', 'vxn'] %}
+            {% set d = details[key] %}
+            {% set weights = {'pe':'30%','cape':'25%','drawdown':'15%','treasury':'10%','vxn':'20%'} %}
+            <tr>
+                <td>{{ d.name }}</td>
+                <td>{{ weights[key] }}</td>
+                <td>{{ d.display }}</td>
+                <td>
+                    {% if d.score is not none %}
+                    <span style="color:{{ d.status_color }}">{{ d.score }}</span>
+                    {% else %}—{% endif %}
+                </td>
+            </tr>
+            {% endfor %}
+            </tbody>
+        </table>
+    </div>
+
+    <!-- Charts -->
+    <div class="charts">
+        <h3>历史趋势</h3>
+        <div class="chart-box">
+            <canvas id="scoreChart"></canvas>
+        </div>
+        <div class="chart-box">
+            <canvas id="indicatorsChart"></canvas>
+        </div>
+    </div>
+
+    <!-- Signal Log -->
+    <div class="signal-log">
+        <h3>信号记录</h3>
+        {% if signals %}
+        <table>
+            <thead><tr><th>日期</th><th>评分</th><th>信号</th><th>备注</th></tr></thead>
+            <tbody>
+            {% for s in signals[:15] %}
+            <tr>
+                <td>{{ s.date }}</td>
+                <td style="font-weight:600">{{ s.score }}</td>
+                <td>{{ s.signal }}</td>
+                <td style="color:var(--dim);font-size:0.8rem">{{ s.reason }}</td>
+            </tr>
+            {% endfor %}
+            </tbody>
+        </table>
+        {% else %}
+        <div style="color:var(--dim)">暂无信号记录</div>
+        {% endif %}
+    </div>
+
+    <!-- Footer -->
+    <div class="footer">
+        数据来源：Yahoo Finance / FRED / multpl.com | 每日自动更新 | 仅供参考，不构成投资建议
+    </div>
+
+    {% endif %}
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.7/dist/chart.umd.min.js"></script>
+<script>
+// ===== 指标卡片展开/收起 =====
+function toggleCard(el) {
+    el.classList.toggle('expanded');
+}
+
+// ===== 手动刷新 =====
+function refreshData(btn) {
+    btn.disabled = true;
+    btn.textContent = '刷新中...';
+    fetch('/api/refresh', {method: 'POST'})
+        .then(r => r.json())
+        .then(d => {
+            if (d.ok) {
+                location.reload();
+            } else {
+                alert('刷新失败: ' + (d.error || '未知错误'));
+                btn.disabled = false;
+                btn.textContent = '刷新数据';
+            }
+        })
+        .catch(e => {
+            alert('请求失败: ' + e);
+            btn.disabled = false;
+            btn.textContent = '刷新数据';
+        });
+}
+
+// ===== 图表 =====
+{% if not no_data %}
+(function() {
+    const history = {{ history_json | tojson }};
+    if (!history || history.length < 2) return;
+
+    const dates = history.map(h => h.date);
+    const scores = history.map(h => h.score);
+    const pes = history.map(h => h.pe);
+    const capes = history.map(h => h.cape);
+    const vxns = history.map(h => h.vxn);
+
+    // ---- 综合评分图 ----
+    const scoreCtx = document.getElementById('scoreChart').getContext('2d');
+    new Chart(scoreCtx, {
+        type: 'line',
+        data: {
+            labels: dates,
+            datasets: [{
+                label: '综合评分',
+                data: scores,
+                borderColor: '#38bdf8',
+                backgroundColor: 'rgba(56,189,248,0.1)',
+                fill: true,
+                tension: 0.3,
+                pointRadius: 3,
+                borderWidth: 2,
+            }]
+        },
+        options: {
+            responsive: true, maintainAspectRatio: false,
+            plugins: {
+                legend: {display: false},
+                title: {display: true, text: '综合估值评分', color: '#e2e8f0', font: {size: 13}},
+            },
+            scales: {
+                x: {ticks: {color: '#94a3b8', maxTicksLimit: 8}, grid: {color: 'rgba(51,65,85,0.5)'}},
+                y: {
+                    min: 0, max: 100,
+                    ticks: {color: '#94a3b8'},
+                    grid: {color: 'rgba(51,65,85,0.5)'},
+                },
+            },
+        }
+    });
+
+    // ---- PE / CAPE / VXN 图 ----
+    const indCtx = document.getElementById('indicatorsChart').getContext('2d');
+    new Chart(indCtx, {
+        type: 'line',
+        data: {
+            labels: dates,
+            datasets: [
+                {label: 'PE-TTM', data: pes, borderColor: '#f87171', tension: 0.3, pointRadius: 2, borderWidth: 2, yAxisID: 'y'},
+                {label: 'CAPE', data: capes, borderColor: '#fb923c', tension: 0.3, pointRadius: 2, borderWidth: 2, yAxisID: 'y'},
+                {label: 'VIX', data: vxns, borderColor: '#a78bfa', tension: 0.3, pointRadius: 2, borderWidth: 2, yAxisID: 'y1'},
+            ]
+        },
+        options: {
+            responsive: true, maintainAspectRatio: false,
+            plugins: {
+                legend: {labels: {color: '#94a3b8', usePointStyle: true, pointStyle: 'line'}},
+                title: {display: true, text: '核心指标趋势', color: '#e2e8f0', font: {size: 13}},
+            },
+            scales: {
+                x: {ticks: {color: '#94a3b8', maxTicksLimit: 8}, grid: {color: 'rgba(51,65,85,0.5)'}},
+                y: {
+                    position: 'left',
+                    title: {display: true, text: 'PE / CAPE', color: '#94a3b8'},
+                    ticks: {color: '#94a3b8'},
+                    grid: {color: 'rgba(51,65,85,0.5)'},
+                },
+                y1: {
+                    position: 'right',
+                    title: {display: true, text: 'VIX', color: '#94a3b8'},
+                    ticks: {color: '#94a3b8'},
+                    grid: {drawOnChartArea: false},
+                },
+            },
+        }
+    });
+})();
+{% endif %}
+</script>
+</body>
+</html>
